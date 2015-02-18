@@ -1,0 +1,116 @@
+#!/usr/bin/env zsh
+# This is a little hackish script to print stuff to CUPS printers
+# from anywhere ...
+
+# Modules
+zmodload zsh/zutil
+
+# Globals
+typeset VERSION="1.0.0-beta"
+typeset -A ARGS
+typeset FILE
+typeset PRINTER
+typeset -a PRINTERS
+typeset CONFIG=~/.config/sshprint/config
+typeset USAGE="$(basename "$0") [-h | --help] [-V | --version] [-P printer_name] {--file} file"
+typeset HELP="Usage: $USAGE
+Options:
+  -h, --help\t\tPrint this help message and exit
+  -V, --version\t\tPrint version and exit
+  -P=<printer_name>\tSpecify <printer_name> to print to
+  --file=<file>, <file>\tFile to be printed"
+
+# Spec:
+#   -h, --help -> help message (other)
+#   -V, --version -> version number (other)
+#   -P -> printer name (optional)
+#   FILE ($0), --file -> file location (manditory)
+function parse_args()
+{
+    zparseopts -E -D -A ARGS -- h -help V -version P: -file: 
+   
+    if ((${+ARGS[--help]})); then
+        echo -e "$HELP" 1>&2
+        exit
+    fi
+    if ((${+ARGS[-h]})); then
+        echo "Usage: $USAGE" 1>&2
+        echo "pass in \`--help' for more details" 1>&2
+        exit
+    fi
+    if ((${+ARGS[-V]} || ${+ARGS[--version]})); then
+        echo "Version: ${VERSION}"
+        exit
+    fi
+    if ((${+ARGS[-P]})); then
+        PRINTER="${ARGS[-P]}"
+    fi
+    if ((${+ARGS[--file]})); then
+        FILE="${ARGS[--file]}"
+    elif (( $#@ > 0 )); then
+        FILE="$1"
+    else
+        echo "You haven't specified a file to be printed...Aborting!" 1>&2
+        exit
+    fi
+
+    if [[ ! -e "$FILE" ]]; then
+        echo "File seems not to exist...Aborting!" 1>&2
+        exit
+    fi
+}
+
+function load_config()
+{
+    if [[ ! -e "$CONFIG" ]]; then
+        echo "There is not config file at ${CONFIG}...Aborting!" 1>&2
+        exit
+    fi
+
+    source "$CONFIG"
+}
+
+function get_list()
+{
+    local count=3
+    tmp="$(ssh "$USER"@"$SERVER" "lpstat -a" | awk '{ print $1 }')"
+    PRINTERS=(${=tmp})
+}
+
+function select_printer()
+{
+    for (( i = 1; i < ${#PRINTERS}; i++)) do
+        echo "[$i]: ${PRINTERS[$i]}";
+    done
+
+    while ((count > 0)); do
+        read PRINTER\?"Which printer would you like to print to? "
+
+        if (($PRINTER < 1 || $PRINTER > ${#PRINTERS}-1)); then
+            if (( count > 1 )); then
+                echo "Invalid printer number given...try again..." 1>&2
+            else
+                echo "Invalid printer number given... no more retries for you!" 1>&2
+            fi
+        else
+            break
+        fi
+        count=$count-1;
+    done
+
+    if ((count == 0)); then
+        echo "That was naughty of you...Aborting!" 1>&2
+        exit
+    fi
+}
+
+function print_file()
+{
+    ssh "$USER"@"$SERVER" "lpr -P ${PRINTERS[$PRINTER]}" < "$FILE"
+}
+
+parse_args $*
+load_config
+get_list
+select_printer
+print_file
