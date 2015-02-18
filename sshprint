@@ -72,13 +72,14 @@ function load_config()
 
 function get_list()
 {
-    local count=3
     tmp="$(ssh "$USER"@"$SERVER" "lpstat -a" | awk '{ print $1 }')"
     PRINTERS=(${=tmp})
 }
 
 function select_printer()
 {
+    local count=3
+    
     for (( i = 1; i < ${#PRINTERS}; i++)) do
         echo "[$i]: ${PRINTERS[$i]}";
     done
