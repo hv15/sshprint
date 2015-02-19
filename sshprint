@@ -1,33 +1,33 @@
 #!/usr/bin/env zsh
 # This is a little hackish script to print stuff to CUPS printers
 # from anywhere ...
+#
+# Written by: Hans-Nikolai Viessmann (C) 2015
+# Dependencies: zsh, lpr, lpstat, and awk (maybe some more...)
 
 # Modules
 zmodload zsh/zutil
 
-# Globals
-typeset VERSION="1.0.0-beta"
+# Variables
+typeset VERSION="1.1.0-beta"
 typeset -A ARGS
 typeset FILE
 typeset PRINTER
 typeset -a PRINTERS
 typeset CONFIG=~/.config/sshprint/config
-typeset USAGE="$(basename "$0") [-h | --help] [-V | --version] [-P printer_name] {--file} file"
+typeset USAGE="$(basename "$0") [-h | --help] [-r | --refresh-printers] [-p | --list-printers] [-V | --version] [-P <printer_name>] {--file} <file>"
 typeset HELP="Usage: $USAGE
 Options:
-  -h, --help\t\tPrint this help message and exit
-  -V, --version\t\tPrint version and exit
-  -P=<printer_name>\tSpecify <printer_name> to print to
-  --file=<file>, <file>\tFile to be printed"
+  -h, --help              Print this help message and exit
+  -V, --version           Print version and exit
+  -r, --refresh-printers  Refresh list of printers in config  
+  -p, --list-printers     Print a list of printers
+  -P=<printer_name>       Specify <printer_name> to print to
+  --file=<file>, <file>   File to be printed"
 
-# Spec:
-#   -h, --help -> help message (other)
-#   -V, --version -> version number (other)
-#   -P -> printer name (optional)
-#   FILE ($0), --file -> file location (manditory)
 function parse_args()
 {
-    zparseopts -E -D -A ARGS -- h -help V -version P: -file: 
+    zparseopts -E -D -A ARGS -- h -help V -version r -refresh-printers p -list-printers P: -file: 
    
     if ((${+ARGS[--help]})); then
         echo -e "$HELP" 1>&2
@@ -35,11 +35,25 @@ function parse_args()
     fi
     if ((${+ARGS[-h]})); then
         echo "Usage: $USAGE" 1>&2
-        echo "pass in \`--help' for more details" 1>&2
+        echo "Try \`--help' for more details" 1>&2
         exit
     fi
     if ((${+ARGS[-V]} || ${+ARGS[--version]})); then
         echo "Version: ${VERSION}"
+        exit
+    fi
+    if ((${+ARGS[-r]} || ${+ARGS[--refresh]})); then
+        echo "Rereshing list..."
+        load_config
+        get_printer_list
+        save_config
+        exit
+    fi
+    if ((${+ARGS[-p]} || ${+ARGS[--list-printers]})); then
+        load_config
+        for (( i = 1; i < ${#PRINTERS}; i++)) do
+            echo "${PRINTERS[$i]}";
+        done
         exit
     fi
     if ((${+ARGS[-P]})); then
@@ -50,27 +64,34 @@ function parse_args()
     elif (( $#@ > 0 )); then
         FILE="$1"
     else
+        echo "Usage: $USAGE" 1>&2
         echo "You haven't specified a file to be printed...Aborting!" 1>&2
         exit
     fi
 
-    if [[ ! -e "$FILE" ]]; then
-        echo "File seems not to exist...Aborting!" 1>&2
+    if [[ ! -e "${FILE:A}" ]]; then
+        echo "File ${FILE:A} does not exist...Aborting!" 1>&2
         exit
     fi
 }
 
 function load_config()
 {
-    if [[ ! -e "$CONFIG" ]]; then
-        echo "There is not config file at ${CONFIG}...Aborting!" 1>&2
+    if [[ ! -e "${CONFIG:A}" ]]; then
+        echo "There is not config file at ${CONFIG:A}...Aborting!" 1>&2
+        echo "Please create it. See github.com/hv15/sshprint for more information." 1>&2
         exit
     fi
 
-    source "$CONFIG"
+    source "${CONFIG:A}"
 }
 
-function get_list()
+function save_config()
+{
+    echo -e "USER=$USER\nSERVER=$SERVER\nPRINTERS=( $PRINTERS )" > "${CONFIG:A}"
+}
+
+function get_printer_list()
 {
     tmp="$(ssh "$USER"@"$SERVER" "lpstat -a" | awk '{ print $1 }')"
     PRINTERS=(${=tmp})
@@ -107,11 +128,29 @@ function select_printer()
 
 function print_file()
 {
-    ssh "$USER"@"$SERVER" "lpr -P ${PRINTERS[$PRINTER]}" < "$FILE"
+    ssh "$USER"@"$SERVER" "lpr -P ${PRINTERS[$PRINTER]}" < "${FILE:A}"
 }
 
 parse_args $*
 load_config
-get_list
-select_printer
+
+if [ ${#PRINTERS} -eq 0 ]; then
+    echo "You don't have a local copy of the printers list, retrieving..."
+    get_printer_list
+    
+    read -rs -k 1 ans\?"Would you like to store the list in your config file? [Y/n]: "
+
+    case "$ans" in
+        y|Y|$'\n')
+            save_config
+            ;;
+        *)
+            ;;
+    esac
+fi
+
+if [ -z "$PRINTER"]; then
+    select_printer
+fi
+
 print_file
