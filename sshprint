@@ -9,25 +9,26 @@
 zmodload zsh/zutil
 
 # Variables
-typeset VERSION="1.1.1-beta"
+typeset VERSION="1.2.0-beta"
 typeset -A ARGS
 typeset FILE
 typeset PRINTER
 typeset -a PRINTERS
 typeset CONFIG=~/.config/sshprint/config
-typeset USAGE="$(basename "$0") [-h | --help] [-r | --refresh-printers] [-p | --list-printers] [-V | --version] [-P <printer_name>] {--file} <file>"
+typeset USAGE="$(basename "$0") [-h | --help] [-V | --version] [-D | --set-default <printer_name>] [-r | --refresh-printers] [-p | --list-printers]  [-P <printer_name>] {--file} <file>"
 typeset HELP="Usage: $USAGE
 Options:
   -h, --help              Print this help message and exit
   -V, --version           Print version and exit
   -r, --refresh-printers  Refresh list of printers in config  
   -p, --list-printers     Print a list of printers
+  -D=<printer_name>       Write default printer to config file
   -P=<printer_name>       Specify <printer_name> to print to
   --file=<file>, <file>   File to be printed"
 
 function parse_args()
 {
-    zparseopts -E -D -A ARGS -- h -help V -version r -refresh-printers p -list-printers P: -file: 
+    zparseopts -E -D -A ARGS -- h -help V -version r -refresh-printers p -list-printers D: P: -file: 
    
     if ((${+ARGS[--help]})); then
         echo -e "$HELP" 1>&2
@@ -40,6 +41,17 @@ function parse_args()
     fi
     if ((${+ARGS[-V]} || ${+ARGS[--version]})); then
         echo "Version: ${VERSION}"
+        exit
+    fi
+    if ((${+ARGS[-D]})); then
+        load_config
+        if [ -z "$DEFAULTP" -o "$DEFAULTP" != "${ARGS[-D]}" ]; then
+            DEFAULTP="${ARGS[-D]}"
+            save_config
+            echo "Default printer set as \`${ARGS[-D]}'"
+        else
+            echo "Printer already set...Aborting!" 1>&2
+        fi
         exit
     fi
     if ((${+ARGS[-r]} || ${+ARGS[--refresh]})); then
@@ -88,7 +100,7 @@ function load_config()
 
 function save_config()
 {
-    echo -e "USER=$USER\nSERVER=$SERVER\nPRINTERS=( $PRINTERS )" > "${CONFIG:A}"
+    echo -e "USER=$USER\nSERVER=$SERVER\nPRINTERS=( $PRINTERS )\nDEFAULTP=$DEFAULTP" > "${CONFIG:A}"
 }
 
 function get_printer_list()
@@ -152,8 +164,11 @@ if [ ${#PRINTERS} -eq 0 ]; then
     esac
 fi
 
-if [ -z "$PRINTER"]; then
-    select_printer
+if [ -z "$PRINTER" ]; then
+    if [ -z "$DEFAULTP" ]; then
+        select_printer
+    fi
+    PRINTER="$DEFAULTP"
 fi
 
 print_file
