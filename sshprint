@@ -9,7 +9,7 @@
 zmodload zsh/zutil
 
 # Variables
-typeset VERSION="1.1.0-beta"
+typeset VERSION="1.1.1-beta"
 typeset -A ARGS
 typeset FILE
 typeset PRINTER
@@ -100,15 +100,16 @@ function get_printer_list()
 function select_printer()
 {
     local count=3
+    local printern
     
     for (( i = 1; i < ${#PRINTERS}; i++)) do
         echo "[$i]: ${PRINTERS[$i]}";
     done
 
     while ((count > 0)); do
-        read PRINTER\?"Which printer would you like to print to? "
+        read printern\?"Which printer would you like to print to? "
 
-        if (($PRINTER < 1 || $PRINTER > ${#PRINTERS}-1)); then
+        if (($printern < 1 || $printern > ${#PRINTERS}-1)); then
             if (( count > 1 )); then
                 echo "Invalid printer number given...try again..." 1>&2
             else
@@ -124,11 +125,13 @@ function select_printer()
         echo "That was naughty of you...Aborting!" 1>&2
         exit
     fi
+
+    PRINTER="${PRINTERS[$printern]}"
 }
 
 function print_file()
 {
-    ssh "$USER"@"$SERVER" "lpr -P ${PRINTERS[$PRINTER]}" < "${FILE:A}"
+    ssh "$USER@$SERVER" "lpr -P $PRINTER" < "${FILE:A}"
 }
 
 parse_args $*
