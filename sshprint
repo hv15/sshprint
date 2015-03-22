@@ -9,20 +9,20 @@
 zmodload zsh/zutil
 
 # Variables
-typeset VERSION="1.2.0-beta"
+typeset VERSION="1.3.0-beta"
 typeset -A ARGS
 typeset FILE
 typeset PRINTER
 typeset -a PRINTERS
+typeset -a FAVORITEP
 typeset CONFIG=~/.config/sshprint/config
-typeset USAGE="$(basename "$0") [-h | --help] [-V | --version] [-D | --set-default <printer_name>] [-r | --refresh-printers] [-p | --list-printers]  [-P <printer_name>] {--file} <file>"
+typeset USAGE="$(basename "$0") [-h | --help] [-V | --version] [-r | --refresh-printers] [-p | --list-printers]  [-P <printer_name>] {--file} <file>"
 typeset HELP="Usage: $USAGE
 Options:
   -h, --help              Print this help message and exit
   -V, --version           Print version and exit
   -r, --refresh-printers  Refresh list of printers in config  
   -p, --list-printers     Print a list of printers
-  -D=<printer_name>       Write default printer to config file
   -P=<printer_name>       Specify <printer_name> to print to
   --file=<file>, <file>   File to be printed"
 
@@ -43,17 +43,6 @@ function parse_args()
         echo "Version: ${VERSION}"
         exit
     fi
-    if ((${+ARGS[-D]})); then
-        load_config
-        if [ -z "$DEFAULTP" -o "$DEFAULTP" != "${ARGS[-D]}" ]; then
-            DEFAULTP="${ARGS[-D]}"
-            save_config
-            echo "Default printer set as \`${ARGS[-D]}'"
-        else
-            echo "Printer already set...Aborting!" 1>&2
-        fi
-        exit
-    fi
     if ((${+ARGS[-r]} || ${+ARGS[--refresh]})); then
         echo "Rereshing list..."
         load_config
@@ -63,8 +52,13 @@ function parse_args()
     fi
     if ((${+ARGS[-p]} || ${+ARGS[--list-printers]})); then
         load_config
+        printf "%-8s  %-10s\n" "Favorite" "Name"
         for (( i = 1; i < ${#PRINTERS}; i++)) do
-            echo "${PRINTERS[$i]}";
+            if (( ${+FAVORITEP[(r)${PRINTERS[$i]}]} )); then
+                printf "%8s  %-10s\n" "*" "${PRINTERS[$i]}"
+            else
+                printf "%8s  %-10s\n" "" "${PRINTERS[$i]}"
+            fi
         done
         exit
     fi
@@ -91,7 +85,7 @@ function load_config()
 {
     if [[ ! -e "${CONFIG:A}" ]]; then
         echo "There is not config file at ${CONFIG:A}...Aborting!" 1>&2
-        echo "Please create it. See github.com/hv15/sshprint for more information." 1>&2
+        echo "Please create it. See https://github.com/hv15/sshprint for more information." 1>&2
         exit
     fi
 
@@ -100,7 +94,7 @@ function load_config()
 
 function save_config()
 {
-    echo -e "USER=$USER\nSERVER=$SERVER\nPRINTERS=( $PRINTERS )\nDEFAULTP=$DEFAULTP" > "${CONFIG:A}"
+    echo -e "USER=$USER\nSERVER=$SERVER\nPRINTERS=( $PRINTERS )\nFAVORITEP=( $FAVORITEP )\nDEFAULTP=$DEFAULTP" > "${CONFIG:A}"
 }
 
 function get_printer_list()
@@ -109,19 +103,34 @@ function get_printer_list()
     PRINTERS=(${=tmp})
 }
 
-function select_printer()
+function set_favorite_printer()
+{
+    if [ $# -eq 0 ]; then
+        echo "Function \`favorite_printer' used incorrectly, no argument given. Aborting..." 1>&2
+        exit
+    else
+        if ! (( ${+FAVORITEP[(r)$1]} )); then
+            FAVORITEP[2,3]=( ${FAVORITEP[1,2]} )
+            FAVORITEP[1]="$1"
+            save_config
+        fi
+    fi
+}
+
+function all_select_printer()
 {
     local count=3
     local printern
     
-    for (( i = 1; i < ${#PRINTERS}; i++)) do
+    echo "Complete list of printers:"
+    for (( i = 1; i <= ${#PRINTERS}; i++)) do
         echo "[$i]: ${PRINTERS[$i]}";
     done
 
-    while ((count > 0)); do
+    while (( count > 0 )); do
         read printern\?"Which printer would you like to print to? "
 
-        if (($printern < 1 || $printern > ${#PRINTERS}-1)); then
+        if (( $printern < 1 || $printern > ${#PRINTERS} )); then
             if (( count > 1 )); then
                 echo "Invalid printer number given...try again..." 1>&2
             else
@@ -133,18 +142,63 @@ function select_printer()
         count=$count-1;
     done
 
-    if ((count == 0)); then
+    if (( count == 0 )); then
         echo "That was naughty of you...Aborting!" 1>&2
         exit
     fi
 
     PRINTER="${PRINTERS[$printern]}"
+    set_favorite_printer "${PRINTER}"
+}
+
+function select_printer()
+{
+    local count=3
+    local printern
+    
+    if [ ${#FAVORITEP} -eq 0 ]; then
+        FAVORITEP=( ${PRINTERS[1,3]} )
+    fi
+
+    echo "Favorite printers:"
+    for (( i = 1; i <= ${#FAVORITEP}; i++)) do
+        echo "[$i]: ${FAVORITEP[$i]}";
+    done
+    
+    while ((count > 0)); do
+        read printern\?"Which printer would you like to print to? [Enter 0 to get full list] "
+
+        if (( $printern == 0 )); then
+            all_select_printer
+            return
+        elif (( $printern > ${#FAVORITEP} )); then
+            if (( count > 1 )); then
+                echo "Invalid printer number given...try again..." 1>&2
+            else
+                echo "Invalid printer number given... no more retries for you!" 1>&2
+            fi
+        else
+            break
+        fi
+
+        count=(( $count - 1 ))
+    done
+
+    if ((count == 0)); then
+        echo "That was naughty of you...Aborting!" 1>&2
+        exit
+    fi
+
+    PRINTER="${FAVORITEP[$printern]}"
+    set_favorite_printer "${PRINTER}"
 }
 
 function print_file()
 {
     ssh "$USER@$SERVER" "lpr -P $PRINTER" < "${FILE:A}"
 }
+
+#/  MAIN  /#
 
 parse_args $*
 load_config
@@ -165,10 +219,7 @@ if [ ${#PRINTERS} -eq 0 ]; then
 fi
 
 if [ -z "$PRINTER" ]; then
-    if [ -z "$DEFAULTP" ]; then
-        select_printer
-    fi
-    PRINTER="$DEFAULTP"
+    select_printer
 fi
 
 print_file
