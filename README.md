@@ -12,7 +12,7 @@ ssh $USER@$REMOTEHOST "lpr -P $PRINTER" < "$DOCUMENT"
 such as providing a list of available printers (using `lpstat -a`) as well as
 using a configuration file to setup some things nice (username and server
 address for one as well as store a list of printers for quick an easy
-selection). Additionally printer options (`lpr -o ...') can be specified.
+selection). Additionally printer options (`lpr -o ...`) can be specified.
 
 Manual
 ------
@@ -20,6 +20,15 @@ Manual
 In order to use the script, you need to have [ZSH](http://www.zsh.org/) and an
 SSH client (e.g. OpenSSH `ssh`). Additionally, the remote server needs to have
 the `lpr` and `lpstat` programs installed and access to at least one printer.
+
+### Installation
+
+As with any script, place it somewhere within your `$PATH` and make sure that
+it is executable.
+
+For those running on ArchLinux, I've created a PKGBUILD script which you can
+use to generate the package, or if you use `yaourt`/`pacaur`, you can get the
+package straight from the [AUR](https://aur.archlinux.org/packages/sshprint/).
 
 ### Config
 
@@ -65,7 +74,6 @@ A few extentions I'd like to add:
 
 * Make the configuration more sophisticated, allowing for more hosts to be
   added with individual configurations.
-* Installation script (AUR?) that generates the config file with all settings
 
 Warranty and License
 --------------------
