@@ -6,13 +6,13 @@ connected to a remote network. Principally, the script adds some extra stuff
 around
 
 ```sh
-ssh $USER@$REMOTEHOST "lpr -P $PRINTER $DOCUMENT"
+ssh $USER@$REMOTEHOST "lpr -P $PRINTER" < "$DOCUMENT"
 ```
 
 such as providing a list of available printers (using `lpstat -a`) as well as
 using a configuration file to setup some things nice (username and server
 address for one as well as store a list of printers for quick an easy
-selection).
+selection). Additionally printer options (`lpr -o ...') can be specified.
 
 Manual
 ------
@@ -34,7 +34,7 @@ FAVORITEP=() # list of the 3 most used printers
 ```
 
 **The file is not initialised or created by the script at first use, the user
-needs to create themselves**. I have now provided an example of the config
+needs to create it themselves**. I have now provided an example of the config
 file as part of this repo, it should be enough to get started. The config file
 is loaded at each call of `sshprint` and the variables are sourced and used
 directly in the script. *No checks are performed to ensure sane formating or
@@ -43,14 +43,19 @@ validity of values*.
 ### Usage
 
 ```
-Usage: sshprint [-h | --help] [-V | --version] [-r | --refresh-printers] [-p | --list-printers]  [-P <printer_name>] {--file} <file>
+Usage: sshprint [OPTIONS...] FILE
+   or: sshprint [OPTIONS...] --file FILE
+
 Options:
   -h, --help              Print this help message and exit
   -V, --version           Print version and exit
   -r, --refresh-printers  Refresh list of printers in config  
   -p, --list-printers     Print a list of printers
-  -P=<printer_name>       Specify <printer_name> to print to
   --file=<file>, <file>   File to be printed
+
+Options passed to `lpr':
+  -P=<printer_name>       Specify <printer_name> to print to
+  -o option[=value],...   Set printer option(s)
 ```
 
 Further Work
