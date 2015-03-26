@@ -8,9 +8,11 @@
 
 ## MODULES ##
 zmodload zsh/zutil
+zmodload zsh/regex
 
 ## SCRIPT RUNTIME SETTINGS ##
 set -e # exit on any failed command
+setopt extended_glob
 
 ## VARIABLES ##
 #-- Globals
@@ -22,7 +24,7 @@ typeset LPROPTIONS
 typeset -a PRINTERS
 typeset -a FAVORITEP
 #-- Constants
-typeset -r VERSION="1.5.0-beta"
+typeset -r VERSION="1.5.1-beta"
 typeset -r DEBUG=false # activate debug mode
 typeset -r CONFIG=~/.config/sshprint/config
 typeset -r USAGE="$(basename "$0") [OPTIONS...] FILE\n   or: $(basename "$0") [OPTIONS...] --file FILE"
@@ -146,7 +148,7 @@ function set_favorite_printer()
 
 function all_select_printer()
 {
-    local count=3
+    local -i count=3
     local printern
     
     echo "Complete list of printers:"
@@ -157,15 +159,21 @@ function all_select_printer()
     while (( count > 0 )); do
         read printern\?"Which printer would you like to print to? "
 
-        if (( $printern < 1 || $printern > ${#PRINTERS} )); then
-            if (( count > 1 )); then
-                echo "Invalid printer number given...try again..." 1>&2
-            else
-                echo "Invalid printer number given... no more retries for you!" 1>&2
-            fi
-        else
-            break
-        fi
+        case "$printern" in
+            [1-9]##)
+                if (( ${+PRINTERS[$printern]} )); then
+                    break
+                fi
+                ;;
+            *)
+                if (( count > 1 )); then
+                    echo "Invalid printer number given...try again..." 1>&2
+                else
+                    echo "Invalid printer number given... no more retries for you!" 1>&2
+                fi
+                ;;
+        esac
+
         (( count-- ))
     done
 
@@ -180,7 +188,7 @@ function all_select_printer()
 
 function select_printer()
 {
-    local count=3
+    local -i count=3
     local printern
     
     if [ ${#FAVORITEP} -eq 0 ]; then
@@ -193,20 +201,28 @@ function select_printer()
     done
     
     while (( count > 0 )); do
-        read printern\?"Which printer would you like to print to? [Enter 0 to get full list] "
-
-        if (( $printern == 0 )); then
-            all_select_printer
-            return
-        elif (( $printern > ${#FAVORITEP} )); then
-            if (( count > 1 )); then
-                echo "Invalid printer number given...try again..." 1>&2
-            else
-                echo "Invalid printer number given... no more retries for you!" 1>&2
-            fi
-        else
-            break
-        fi
+        read printern\?"Which printer would you like to print to? [Default: 1] "
+        
+        case "$printern" in
+            "")
+                printern=1
+                break
+                ;;
+            0)
+                all_select_printer
+                return
+                ;;
+            [1-${#FAVORITEP}])
+                break
+                ;;
+            *)
+                if (( count > 1 )); then
+                    echo "Invalid printer number given...try again..." 1>&2
+                else
+                    echo "Invalid printer number given... no more retries for you!" 1>&2
+                fi
+                ;;
+        esac
 
         (( count-- ))
     done
