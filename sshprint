@@ -16,12 +16,13 @@ set -e # exit on any failed command
 #-- Globals
 typeset -A ARGS
 typeset FILE
+typeset -i NUMBER
 typeset PRINTER
 typeset LPROPTIONS
 typeset -a PRINTERS
 typeset -a FAVORITEP
 #-- Constants
-typeset -r VERSION="1.4.0-beta"
+typeset -r VERSION="1.5.0-beta"
 typeset -r DEBUG=false # activate debug mode
 typeset -r CONFIG=~/.config/sshprint/config
 typeset -r USAGE="$(basename "$0") [OPTIONS...] FILE\n   or: $(basename "$0") [OPTIONS...] --file FILE"
@@ -32,10 +33,11 @@ Options:
   -V, --version           Print version and exit
   -r, --refresh-printers  Refresh list of printers in config  
   -p, --list-printers     Print a list of printers
-  --file=<file>, <file>   File to be printed
+  --file=FILE, FILE       File to be printed
 
 Options passed to \`lpr':
-  -P=<printer_name>       Specify <printer_name> to print to
+  -P <printer_name>       Specify <printer_name> to print to
+  -n copies               Specify number of copies
   -o option[=value],...   Set printer option(s)"
 
 ## HELPER FUNCTIONS ##
@@ -43,7 +45,7 @@ Options passed to \`lpr':
 ## FUNCTIONS ##
 function parse_args()
 {
-    zparseopts -E -D -A ARGS -- h -help V -version r -refresh-printers p -list-printers D: P: -file: o:
+    zparseopts -E -D -A ARGS -- h -help V -version r -refresh-printers p -list-printers D: P: -file: o: n:
     
     if [ "$DEBUG" = true ]; then
         echo "#FLAGS: ${(kv)ARGS}"
@@ -85,6 +87,9 @@ function parse_args()
     fi
     if (( ${+ARGS[-o]} )); then
         LPROPTIONS="-o ${ARGS[-o]//,/ -o }"
+    fi
+    if (( ${+ARGS[-n]} )); then
+        NUMBER="${ARGS[-n]}"
     fi
     if (( ${+ARGS[--file]} )); then
         FILE="${ARGS[--file]}"
@@ -217,10 +222,11 @@ function select_printer()
 
 function print_file()
 {
+    local ssh_command="\"$USER@$SERVER\" \"lpr -P $PRINTER -#$NUMBER $LPROPTIONS\" < \"${FILE:A}\""
     if [ "$DEBUG" = false ]; then
-        ssh "$USER@$SERVER" "lpr -P $PRINTER $LPROPTIONS" < "${FILE:A}"
+        ssh $ssh_command
     else
-        echo "ssh $USER@$SERVER \"lpr -P $PRINTER $LPROPTIONS\" < ${FILE:A}"
+        echo $ssh_command
     fi
 }
 
@@ -250,6 +256,10 @@ fi
 
 if [ -z "$PRINTER" ]; then
     select_printer
+fi
+
+if [ "$NUMBER" -eq 0 ]; then
+    NUMBER=1
 fi
 
 print_file

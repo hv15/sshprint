@@ -60,10 +60,11 @@ Options:
   -V, --version           Print version and exit
   -r, --refresh-printers  Refresh list of printers in config  
   -p, --list-printers     Print a list of printers
-  --file=<file>, <file>   File to be printed
+  --file=FILE, FILE       File to be printed
 
 Options passed to `lpr':
-  -P=<printer_name>       Specify <printer_name> to print to
+  -P <printer_name>       Specify <printer_name> to print to
+  -n copies               Specify number of copies
   -o option[=value],...   Set printer option(s)
 ```
 
