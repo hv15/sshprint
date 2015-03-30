@@ -238,11 +238,12 @@ function select_printer()
 
 function print_file()
 {
-    local ssh_command="\"$USER@$SERVER\" \"lpr -P $PRINTER -#$NUMBER $LPROPTIONS\" < \"${FILE:A}\""
+    local ssh_remote="$USER@$SERVER"
+    local ssh_command="\"lpr -P $PRINTER -#$NUMBER $LPROPTIONS\"" 
     if [ "$DEBUG" = false ]; then
-        ssh $ssh_command
+        ssh "$USER@$SERVER" "lpr -P $PRINTER -#$NUMBER $LPROPTIONS" < "${FILE:A}" 
     else
-        echo $ssh_command
+        echo "$ssh_remote $ssh_command < ${FILE:A}"
     fi
 }
 
