@@ -21,36 +21,41 @@ typeset FILE
 typeset -i NUMBER
 typeset PRINTER
 typeset LPROPTIONS
+typeset SERVER
+typeset DEFAULTS
+typeset SESSIONS
 typeset -a PRINTERS
 typeset -a FAVORITEP
 #-- Constants
-typeset -r VERSION="1.5.1-beta"
+typeset -r VERSION="1.6.0-beta"
 typeset -r DEBUG=false # activate debug mode
-typeset -r CONFIG=~/.config/sshprint/config
+typeset -r CONFIG_DIR="$HOME/.config/sshprint"
+typeset -r CONFIG="$CONFIG_DIR/config"
 typeset -r USAGE="$(basename "$0") [OPTIONS...] FILE\n   or: $(basename "$0") [OPTIONS...] --file FILE"
 typeset -r HELP="Usage: $USAGE
 
 Options:
-  -h, --help              Print this help message and exit
-  -V, --version           Print version and exit
-  -r, --refresh-printers  Refresh list of printers in config  
-  -p, --list-printers     Print a list of printers
-  --file=FILE, FILE       File to be printed
+  -h, --help                  Print this help message and exit
+  -V, --version               Print version and exit
+  -r, --refresh-printers      Refresh list of printers in config  
+  -p, --list-printers         Print a list of printers
+  --server=SERVER             Server to connect to and print from
+  --file=FILE, FILE           File to be printed
 
 Options passed to \`lpr':
-  -P <printer_name>       Specify <printer_name> to print to
-  -n copies               Specify number of copies
-  -o option[=value],...   Set printer option(s)"
+  -P printer_nam>             Specify printer to print to
+  -n copies                   Specify number of copies
+  -o option[=value],...       Set printer option(s)"
 
 ## HELPER FUNCTIONS ##
 
 ## FUNCTIONS ##
 function parse_args()
 {
-    zparseopts -E -D -A ARGS -- h -help V -version r -refresh-printers p -list-printers D: P: -file: o: n:
+    zparseopts -E -D -A ARGS -- h -help V -version -server: r -refresh-printers p -list-printers D: P: -file: o: n: 
     
     if [ "$DEBUG" = true ]; then
-        echo "#FLAGS: ${(kv)ARGS}"
+        echo "#FLAGS ${(kv)ARGS}"
     fi
 
     if (( ${+ARGS[--help]} )); then
@@ -65,6 +70,9 @@ function parse_args()
         echo "Version: ${VERSION}"
         exit
     fi
+    if (( ${+ARGS[--server]} )); then
+        SESSIONS="${ARGS[--server]}"
+    fi
     if (( ${+ARGS[-r]} || ${+ARGS[--refresh]} )); then
         echo "Rereshing list..."
         load_config
@@ -74,7 +82,9 @@ function parse_args()
     fi
     if (( ${+ARGS[-p]} || ${+ARGS[--list-printers]} )); then
         load_config
+        echo "Known Printers on \`$SERVER'"
         printf "%-8s  %-10s\n" "Favorite" "Name"
+        printf "%-8s  %-10s\n" "--------" "----"
         for (( i = 1; i < ${#PRINTERS}; i++ )) do
             if (( ${+FAVORITEP[(r)${PRINTERS[$i]}]} )); then
                 printf "%8s  %-10s\n" "*" "${PRINTERS[$i]}"
@@ -119,16 +129,36 @@ function load_config()
     fi
 
     source "${CONFIG:A}"
+
+    if ! [ -z "$SESSIONS" ]; then
+        DEFAULTS="$SESSIONS"
+    fi
+
+    if ! [ -z "$DEFAULTS" ]; then
+        source "${CONFIG_DIR:A}/$DEFAULTS"
+    else
+        echo "No default server given, please specify a server with -S...Aborting!" 1>&2
+        exit
+    fi
 }
 
 function save_config()
 {
-    echo -e "USER=$USER\nSERVER=$SERVER\nPRINTERS=( $PRINTERS )\nFAVORITEP=( $FAVORITEP )\nDEFAULTP=$DEFAULTP" > "${CONFIG:A}"
+    echo -e "# Main configuration file. Updated $(date -u +"%D %T%z")" > "${CONFIG:A}"
+    echo -e "DEFAULTS=$DEFAULTS" >> "${CONFIG:A}"
+
+    save_server_config
+}
+
+function save_server_config()
+{
+    echo -e "# Configuration file for \`$SERVER'. Updated $(date -u +"%D %T%z")" > "${CONFIG_DIR:A}/$DEFAULTS"
+    echo -e "USER=$USER\nSERVER=$SERVER\nPRINTERS=( $PRINTERS )\nFAVORITEP=( $FAVORITEP )" >> "${CONFIG_DIR:A}/$DEFAULTS"
 }
 
 function get_printer_list()
 {
-    tmp="$(ssh "$USER"@"$SERVER" "lpstat -a" | awk '{ print $1 }')"
+    tmp="$(ssh "$USER@$SERVER" "lpstat -p" | awk '{ if ($5 == "enabled") print $2; }')"
     PRINTERS=(${=tmp})
 }
 
@@ -153,7 +183,7 @@ function all_select_printer()
     
     echo "Complete list of printers:"
     for (( i = 1; i <= ${#PRINTERS}; i++)) do
-        echo "[$i]: ${PRINTERS[$i]}";
+        printf "[%2s]: %s\n" "$i" "${PRINTERS[$i]}"
     done
 
     while (( count > 0 )); do
@@ -201,7 +231,7 @@ function select_printer()
     done
     
     while (( count > 0 )); do
-        read printern\?"Which printer would you like to print to? [Default: 1] "
+        read printern\?"Which printer would you like to print to? [whole list: 0, default: 1] "
         
         case "$printern" in
             "")
@@ -239,11 +269,11 @@ function select_printer()
 function print_file()
 {
     local ssh_remote="$USER@$SERVER"
-    local ssh_command="\"lpr -P $PRINTER -#$NUMBER $LPROPTIONS\"" 
+    local ssh_command="lpr -P $PRINTER -#$NUMBER $LPROPTIONS" 
     if [ "$DEBUG" = false ]; then
-        ssh "$USER@$SERVER" "lpr -P $PRINTER -#$NUMBER $LPROPTIONS" < "${FILE:A}" 
+        ssh "$ssh_remote" "$ssh_command" < "${FILE:A}" 
     else
-        echo "$ssh_remote $ssh_command < ${FILE:A}"
+        echo "#SSH ssh \"$ssh_remote\" \"$ssh_command\" < \"${FILE:A}\""
     fi
 }
 

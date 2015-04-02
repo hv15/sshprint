@@ -1,0 +1,2 @@
+# This is an example config file for `sshprint'
+DEFAULTS="name of server config file, e.g. ediuni"
