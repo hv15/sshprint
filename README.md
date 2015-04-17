@@ -89,7 +89,7 @@ Options:
   --file=FILE, FILE           File to be printed
 
 Options passed to `lpr':
-  -P printer_nam>             Specify printer to print to
+  -P printer_name             Specify printer to print to
   -n copies                   Specify number of copies
   -o option[=value],...       Set printer option(s)
 ```

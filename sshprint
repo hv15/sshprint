@@ -27,7 +27,7 @@ typeset SESSIONS
 typeset -a PRINTERS
 typeset -a FAVORITEP
 #-- Constants
-typeset -r VERSION="1.6.0-beta"
+typeset -r VERSION="1.6.1-beta"
 typeset -r DEBUG=false # activate debug mode
 typeset -r CONFIG_DIR="$HOME/.config/sshprint"
 typeset -r CONFIG="$CONFIG_DIR/config"
@@ -43,7 +43,7 @@ Options:
   --file=FILE, FILE           File to be printed
 
 Options passed to \`lpr':
-  -P printer_nam>             Specify printer to print to
+  -P printer_name             Specify printer to print to
   -n copies                   Specify number of copies
   -o option[=value],...       Set printer option(s)"
 
