@@ -27,7 +27,7 @@ typeset SESSIONS
 typeset -a PRINTERS
 typeset -a FAVORITEP
 #-- Constants
-typeset -r VERSION="1.6.1-beta"
+typeset -r VERSION="1.6.2-beta"
 typeset -r DEBUG=false # activate debug mode
 typeset -r CONFIG_DIR="$HOME/.config/sshprint"
 typeset -r CONFIG="$CONFIG_DIR/config"
@@ -39,6 +39,7 @@ Options:
   -V, --version               Print version and exit
   -r, --refresh-printers      Refresh list of printers in config  
   -p, --list-printers         Print a list of printers
+  -s, --list-servers          Print a list of servers
   --server=SERVER             Server to connect to and print from
   --file=FILE, FILE           File to be printed
 
@@ -52,7 +53,7 @@ Options passed to \`lpr':
 ## FUNCTIONS ##
 function parse_args()
 {
-    zparseopts -E -D -A ARGS -- h -help V -version -server: r -refresh-printers p -list-printers D: P: -file: o: n: 
+    zparseopts -E -D -A ARGS -- h -help V -version -server: r -refresh-printers p -list-printers s -list-servers D: P: -file: o: n: 
     
     if [ "$DEBUG" = true ]; then
         echo "#FLAGS ${(kv)ARGS}"
@@ -82,7 +83,7 @@ function parse_args()
     fi
     if (( ${+ARGS[-p]} || ${+ARGS[--list-printers]} )); then
         load_config
-        echo "Known Printers on \`$SERVER'"
+        echo -e "Known Printers on \`$SERVER'\n"
         printf "%-8s  %-10s\n" "Favorite" "Name"
         printf "%-8s  %-10s\n" "--------" "----"
         for (( i = 1; i < ${#PRINTERS}; i++ )) do
@@ -90,6 +91,21 @@ function parse_args()
                 printf "%8s  %-10s\n" "*" "${PRINTERS[$i]}"
             else
                 printf "%8s  %-10s\n" "" "${PRINTERS[$i]}"
+            fi
+        done
+        exit
+    fi
+    if (( ${+ARGS[-s]} || ${+ARGS[--list-servers]} )); then
+        load_config
+        echo -e "Configured servers (in ${CONFIG_DIR:A}/):\n"
+        printf "%-9s  %-10s  %-10s\n" "State" "Name" "Server"
+        printf "%-9s  %-10s  %-10s\n" "-----" "----" "------"
+        for conf in ${CONFIG_DIR:A}/^${CONFIG:t}; do
+            source "${conf:A}"
+            if ! [ -z "${DEFAULTS}" ] && [ "${DEFAULTS}" = "${conf:t}" ]; then
+                printf "%-9s  %-10s  %-10s\n" "DEFAULT" "${conf:t}" "${USER}@${SERVER}"
+            else
+                printf "%-9s  %-10s  %-10s\n" "" "${conf:t}" "${USER}@${SERVER}"
             fi
         done
         exit
