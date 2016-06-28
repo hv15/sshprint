@@ -27,7 +27,7 @@ typeset SESSIONS
 typeset -a PRINTERS
 typeset -a FAVORITEP
 #-- Constants
-typeset -r VERSION="1.6.2-beta"
+typeset -r VERSION="1.6.3-beta"
 typeset -r DEBUG=false # activate debug mode
 typeset -r CONFIG_DIR="$HOME/.config/sshprint"
 typeset -r CONFIG="$CONFIG_DIR/config"
@@ -206,7 +206,7 @@ function all_select_printer()
         read printern\?"Which printer would you like to print to? "
 
         case "$printern" in
-            [1-9]##)
+            [1-9]*)
                 if (( ${+PRINTERS[$printern]} )); then
                     break
                 fi
