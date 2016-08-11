@@ -1,7 +1,8 @@
 # Change Log
 
 ## [Unreleased]
-Currently nothing in the pipes...
+### **Major Changes**
+- Moved from ZSH to PERL, see perl directory for more information. 
 
 ## [1.6.3] - 2016.06.28
 ### Fixed
