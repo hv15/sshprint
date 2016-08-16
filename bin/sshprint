@@ -1,0 +1,102 @@
+#!/usr/bin/env perl
+
+=head1 NAME
+
+Local::SSHPrint - A module that provides an interface to print files to
+printers over SSH
+
+=head1 SYNOPSIS
+
+N/A
+
+=head1 DESCRIPTION
+
+This is a reworking of `sshprint' ZSH script as a Perl Module.
+
+Written by: Hans-Nikolai Viessmann (C) 2016
+License: MIT
+Dependencies: perl, lpr, and lpstat
+
+=cut
+
+use 5.022_02;
+use strict;
+use utf8;
+use autodie;
+use warnings qw(all);
+
+use Local::SSHPrint;
+
+=head2 METHODS
+
+=cut
+
+#-- MAIN
+
+my $class = new Local::SSHPrint();
+$class->prog_name((fileparse($0, qr/\.[^.]*/))[0]);
+
+if($#ARGV lt 0)
+{
+  #TODO LPR backend string...
+  print("TODO: This is where we do the LPR return string for options...\n");
+  exit 10;
+}
+
+$class->parse_args();
+
+$class->logger->debug("Entering function 'main'");
+$class->load_config();
+
+my $sessions = $class->main_config->param('DEFAULTS');
+my @printers = $class->sub_config->param('PRINTERS');
+my @favs = $class->sub_config->param('FAVORITEP');
+if($#printers eq 0)
+{
+  print "You don't have a local copy of the printer list, retrieving...\n";
+  $class->get_printer_list();
+
+  my $response;
+  print "Would you like to save the printer list in your config? [Y/n] ";
+  $response = <STDIN>;
+  chomp($response);
+
+  if($response =~ /[yY]/ or $response eq "")
+  {
+    $class->save_config();
+  }
+}
+
+if(!defined $class->printer())
+{
+  $class->prompt_printer_input("Favorite printers: ", \@favs, \@printers);
+}
+
+$class->logger->debug("The follow options have been set:");
+$class->logger->debug("   SERVER = " . ($class->server() // "UNDEF"));
+$class->logger->debug("     FILE = " . ($class->file() // "UNDEF"));
+$class->logger->debug("  PRINTER = " . ($class->printer() // "UNDEF"));
+$class->logger->debug("   COPIES = " . ($class->number() // "UNDEF"));
+$class->logger->debug(" LPR_OPTS = " . join(", ", @{ $class->lpr_options() }));
+
+$class->print_file();
+
+#-- END MAIN
+
+=head1 ACKNOWLEDGEMENTS
+
+=head1 COPYRIGHT
+
+Copyright (C) 2015-2016, MIT license
+
+=head1 AUTHOR
+
+Hans-Nikolai Viessmann
+
+=head1 SEE ALSO
+
+For more information, please see the git repository at https://git.hans.ninja/hans/sshprint
+
+=cut
+
+# vim:ts=2:sw=2

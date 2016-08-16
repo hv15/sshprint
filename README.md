@@ -1,7 +1,7 @@
-SSHprint
+SSHPrint
 ========
 
-This is a small *ZSH* script I created to quickly print something to a printer
+This is a small Perl script I created to quickly print something to a printer
 connected to a remote network. Principally, the script adds some extra stuff
 around
 
@@ -22,14 +22,13 @@ line argument or config key.
 Manual
 ------
 
-In order to use the script, you need to have [ZSH](http://www.zsh.org/) and an
-SSH client (e.g. OpenSSH `ssh`). Additionally, the remote server needs to have
-the `lpr` and `lpstat` programs installed and access to at least one printer.
+In order to use the script, you need to have [Perl](http://www.perl.org/) and
+OpenSSH `ssh`. Additionally, the remote server needs to have the `lpr` and
+`lpstat` programs installed and access to at least one printer.
 
 ### Installation
 
-As with any script, place it somewhere within your `$PATH` and make sure that
-it is executable (`chmod +x sshprint`).
+*THis section is going to be updated ASAP*
 
 For those running on ArchLinux, I've created a PKGBUILD script which you can
 use to generate the package, or if you use `yaourt`/`pacaur`, you can get the
@@ -63,8 +62,8 @@ An example of a typical server config file is given below:
 ```sh
 USER="remote server user account"
 SERVER="URL to server"
-PRINTERS=() # Can contain a list of printer names, e.g. ( p1 p2 office1 )
-FAVORITEP=() # list of the 3 most used printers, e.g. ( p1 p2 p3 )
+PRINTERS= # Can contain a list of printer names, e.g. ( p1 p2 office1 )
+FAVORITEP= # list of the 3 most used printers, e.g. ( p1 p2 p3 )
 ```
 
 **These file are not initialised or created by the script at first use, the
@@ -82,16 +81,24 @@ Usage: sshprint [OPTIONS...] FILE
 
 Options:
   -h, --help                  Print this help message and exit
+  -v, --verbose               Show verbose output, specifiy multiple
+                               times to increase verbosity
   -V, --version               Print version and exit
-  -r, --refresh-printers      Refresh list of printers in config  
-  -p, --list-printers         Print a list of printers
+  --refresh-printers          Refresh list of printers in config  
+  --list-printers             Print a list of printers
+  --list-servers              Print a list of servers
   --server=SERVER             Server to connect to and print from
   --file=FILE, FILE           File to be printed
 
 Options passed to `lpr':
   -P printer_name             Specify printer to print to
-  -n copies                   Specify number of copies
-  -o option[=value],...       Set printer option(s)
+  -n, -#, --copies=NUM        Specify number of copies
+  -o, --option option[=value] Set printer option(s)
+
+Extra:
+  If verbosity is greater than 3 (i.e. `-vvv') the script will no longer
+  print the specified file, instead it will print out detailed debug
+  information such as options being passed over SSH to lpr.
 ```
 
 Further Work
