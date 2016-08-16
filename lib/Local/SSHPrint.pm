@@ -21,7 +21,7 @@ Dependencies: perl, lpr, and lpstat
 
 package Local::SSHPrint;
 
-our $VERSION = '2.00';
+our $VERSION = '2.01';
 
 use 5.022_02;
 use strict;

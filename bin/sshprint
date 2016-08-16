@@ -26,6 +26,7 @@ use autodie;
 use warnings qw(all);
 
 use Local::SSHPrint;
+use File::Basename;
 
 =head2 METHODS
 
