@@ -21,7 +21,7 @@ Dependencies: perl, lpr, and lpstat
 
 package Local::SSHPrint;
 
-our $VERSION = '2.01';
+our $VERSION = '2.02';
 
 use 5.022_02;
 use strict;
@@ -183,7 +183,7 @@ sub parse_args
   GetOptions (
     \my %opt,
     'help|h' => sub { $class->usage(); exit 0; },
-    'version|V' => sub { print "$class->prog_name $VERSION (Perl Edition)\n"; exit 0; },
+    'version|V' => sub { print $class->prog_namei() . " $VERSION (Perl Edition)\n"; exit 0; },
     'verbose|v+' => \$debug, 
     'refresh-printers' => sub { $class->load_config(); $class->get_printer_list(); $class->save_config(); exit 0; },
     'list-printers' => sub { $class->load_config(); $class->get_printers(); exit 0; },
