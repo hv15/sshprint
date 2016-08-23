@@ -1,24 +1,5 @@
 #!/usr/bin/env perl
 
-=head1 NAME
-
-Local::SSHPrint - A module that provides an interface to print files to
-printers over SSH
-
-=head1 SYNOPSIS
-
-N/A
-
-=head1 DESCRIPTION
-
-This is a reworking of `sshprint' ZSH script as a Perl Module.
-
-Written by: Hans-Nikolai Viessmann (C) 2016
-License: MIT
-Dependencies: perl, lpr, and lpstat
-
-=cut
-
 use 5.022_02;
 use strict;
 use utf8;
@@ -26,32 +7,87 @@ use autodie;
 use warnings qw(all);
 
 use Local::SSHPrint;
-use File::Basename;
-
-=head2 METHODS
-
-=cut
-
-#-- MAIN
+use Getopt::Long qw(:config posix_default bundling no_ignore_case);
+use Pod::Usage;
 
 my $class = new Local::SSHPrint();
-$class->prog_name((fileparse($0, qr/\.[^.]*/))[0]);
 
-if($#ARGV lt 0)
+# getopts variables (defaults)
+my $opt_debug = 0;
+my $opt_server = '';
+my $opt_file = '';
+my $opt_printer = '';
+my $opt_number = 1;
+my @opt_lproptions;
+  
+GetOptions (
+  'help|h' => sub { pod2usage( -verbose => 1 ); },
+  'version|V' => sub { print "$0 " . Local::SSHPrint->VERSION . " (Perl Edition)\n"; exit 0; },
+  'verbose|v+' => \$opt_debug, 
+  'refresh-printers' => sub { $class->load_config(); $class->get_printer_list(); $class->save_config(); exit 0; },
+  'list-printers' => sub { $class->load_config(); $class->get_printers(); exit 0; },
+  'list-servers' => sub { $class->load_config(); $class->get_servers(); exit 0; },
+  'server=s' => \$opt_server,
+  'file=s' => \$opt_file,
+  'printer|P=s' => \$opt_printer,
+  'copies|n|#=i' => \$opt_number,
+  'option|o=s' => \@opt_lproptions 
+) or pod2usage();
+
+$class->logger->more_logging($opt_debug);
+$class->file($opt_file);
+$class->server($opt_server);
+$class->printer($opt_printer);
+$class->number($opt_number);
+$class->lpr_options(\@opt_lproptions);
+
+if($class->file() ne '')
 {
-  #TODO LPR backend string...
-  print("TODO: This is where we do the LPR return string for options...\n");
-  exit 10;
+  if(!-f $class->file())
+  {
+    $class->logger->logdie("File does not exist.\n");
+  }
+} else {
+  if($#ARGV eq 0)
+  {
+    if(-f $ARGV[0])
+    {
+      $class->file($ARGV[0]);
+    } else {
+      $class->logger->logdie("File does not exist.\n");
+    }
+  } else {
+    pod2usage("No file given...");
+  }
 }
 
-$class->parse_args();
+if($class->server() ne '')
+{
+  if(!$class->check_server($class->server()))
+  {
+    $class->logger->logdie("Server does not exist.\n");
+  }
+}
 
-$class->logger->debug("Entering function 'main'");
+if($class->printer() ne '')
+{
+  if(!$class->check_printer($class->printer()))
+  {
+    $class->logger->logdie("Printer does not exist.\n");
+  }
+}
+
+if($class->number() lt 1)
+{
+  $class->logger->logdie("Bad number of copies given.\n");
+}
+
 $class->load_config();
 
 my $sessions = $class->main_config->param('DEFAULTS');
 my @printers = $class->sub_config->param('PRINTERS');
 my @favs = $class->sub_config->param('FAVORITEP');
+
 if($#printers eq 0)
 {
   print "You don't have a local copy of the printer list, retrieving...\n";
@@ -64,7 +100,10 @@ if($#printers eq 0)
 
   if($response =~ /[yY]/ or $response eq "")
   {
+    print "Saving...\n";
     $class->save_config();
+  } else {
+    warn("Moving on without saving...\n");
   }
 }
 
@@ -82,21 +121,113 @@ $class->logger->debug(" LPR_OPTS = " . join(", ", @{ $class->lpr_options() }));
 
 $class->print_file();
 
-#-- END MAIN
+__END__
 
-=head1 ACKNOWLEDGEMENTS
+=head1 NAME
 
-=head1 COPYRIGHT
+sshprint - a tool to print files via SSH to remote printers
 
-Copyright (C) 2015-2016, MIT license
+=head1 SYNOPSIS
+
+B<sshprint> [I<OPTION>]... [B<--file>] I<FILE>
+
+=head1 DESCRIPTION
+
+Print a file on a printer located in a remote network. This tool uses the ssh(1)
+program to pipe the file to lpr(1) on the remote system for printing. It supports
+various options similar to those of lpr(1), such as specifying number of copies
+(B<-#>) and passing job options (B<-o>) to the printer.
+
+The tool assumes that the file to be printed is in a format supported by the
+printing facilities in the remote system - no checks are done. If the file is
+not supported, printing will fail. Please check what file formats are supported
+by the remote system before printing.
+
+Much of the functionality of this software is provided by the L<Local::SSHPrint>
+Perl module, which is used also for the sshlpr3(1) tool.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-h, --help>
+
+Print this help message and exit.
+
+=item B<-v, --verbose>
+
+Show verbose output - specify multiple times to increase verbosity.
+
+=item B<-V, --version>
+
+Print version and exit.
+
+=item B<--refresh-printers>
+
+Refresh list of printers in configuration file. May be combined with
+B<--server> to specify which configuration file to update, otherwise
+the default one is used.
+
+=item B<--list-printers>
+
+Print a list of printers for each configuration file.
+
+=item B<--list-servers>
+
+Print a list of remote systems for which we have a configuration
+file.
+
+=item B<--server> I<server>
+
+Remote system to connect to and print from.
+
+=item B<--file> I<file>
+
+File to be printed. This can either be specified as the last
+argument or through this flag. The flag has precedence.
+
+=back
+
+=head2 Options passed to lpr(1)
+
+=over 4
+
+=item B<-P> I<printer_name>
+
+Specify printer to print to.
+
+=item B<-n>, B<-#>, B<--copies> I<number>
+
+Specify number of copies - must be greater than I<0>.
+
+=item B<-o>, B<--option> I<option[=value]>
+
+Set printer job option - may be given multiple times. The same job options
+are supported as those of the lpr(1) B<-o> flag.
+
+=back
+
+=head2 Extra
+
+If verbosity is greater than 3 (i.e. B<-vvv>) the script will no longer print
+the specified file, instead it will print out detailed debug information such
+as options being passed over ssh(1) to lpr(1).
 
 =head1 AUTHOR
 
-Hans-Nikolai Viessmann
+Written by Hans-Nikolai Viessmann with inspiration taken from Andre Masella's
+script I<sshlpr> and D. Sim (AKA xkjyeah) script I<sshlpr2>.
+
+=head1 COPYRIGHT
+
+Copyright (C) 2015-2016, Hans-Nikolai Viessmann. This software is licensed
+under the terms of the MIT license.
 
 =head1 SEE ALSO
 
-For more information, please see the git repository at https://git.hans.ninja/hans/sshprint
+L<Local::SSHPrint>, sshlpr3(1), and lpr(1).
+
+For more information, please see the git repository at L<https://git.hans.ninja/hans/sshprint>.
 
 =cut
 

@@ -2,26 +2,61 @@
 
 =head1 NAME
 
-Local::SSHPrint - A module that provides an interface to print files to
-printers over SSH
+Local::SSHPrint - A module that provides an interface to print files on
+printers located in remote networks using ssh(1).
 
 =head1 SYNOPSIS
 
-N/A
+  use Local::SSHPrint;
+  
+  # get options and set other fields...
+  
+  $class->load_config();
+  
+  my $sessions = $class->main_config->param('DEFAULTS');
+  my @printers = $class->sub_config->param('PRINTERS');
+  my @favs = $class->sub_config->param('FAVORITEP');
+  
+  if($#printers eq 0)
+  {
+    print "You don't have a local copy of the printer list, retrieving...\n";
+    $class->get_printer_list();
+  
+    my $response;
+    print "Would you like to save the printer list in your config? [Y/n] ";
+    $response = <STDIN>;
+    chomp($response);
+  
+    if($response =~ /[yY]/ or $response eq "")
+    {
+      print "Saving...\n";
+      $class->save_config();
+    } else {
+      warn("Moving on without saving...\n");
+    }
+  }
 
 =head1 DESCRIPTION
 
-This is a reworking of `sshprint' ZSH script as a Perl Module.
+This modules provides an interface to print a file to a printer connected to a
+remote network. Principally, the script adds some extra stuff around
 
-Written by: Hans-Nikolai Viessmann (C) 2016
-License: MIT
-Dependencies: perl, lpr, and lpstat
+  ssh $USER@$REMOTEHOST "lpr -P $PRINTER" < "$DOCUMENT"
+
+The module in addition to printing a file on a remote system, provides facilities
+to handling configuration files for different systems. Each configuration file
+contains stateful information like a list of all available printers on the remote
+system and favorite printers based on historical use.
+
+The functions to do this are given in section L</Methods>.
+
+Details about the configuration file and format is given in L</"Configuration Format">
 
 =cut
 
 package Local::SSHPrint;
 
-our $VERSION = '2.03';
+our $VERSION = '2.04';
 
 use 5.022_02;
 use strict;
@@ -29,15 +64,12 @@ use utf8;
 use autodie;
 use warnings qw(all);
 
-use Getopt::Long qw(:config posix_default bundling no_ignore_case);
-use Pod::Usage;
 use Log::Log4perl qw(:easy);
-use File::Basename;
 use Config::Simple;
 use Net::OpenSSH;
 
 # Ensure that the class->logger is setup.
-Log::Log4perl->easy_init($WARN); 
+Log::Log4perl->easy_init($ERROR); 
 
 # Declare 'global' level variables that are accessible from within the scope
 # of any subroutine of this package.
@@ -50,174 +82,31 @@ use Class::Tiny qw(
   lpr_options
 ), {
   number => 1,
-  config_dir => "$ENV{'HOME'}/.config/sshprint", #FIXME change this to $prog_name, maybe?
+  config_dir => "$ENV{'HOME'}/.config/sshprint", #FIXME
   config_file => 'config',
   main_config => new Config::Simple(),
   sub_config => new Config::Simple(),
   logger => Log::Log4perl->get_logger()
 };
 
-# If the module is called directly as a script, we call the Main method.
-# TODO: this is probably not a good design decision...
-__PACKAGE__->main() unless caller();
+=head2 Methods
 
-=head2 METHODS
+=over 4
 
-=cut
+=item B<load_main_config>
 
-#-- MAIN
+Function loads the main configuration (usually located at
+C<$HOME/.config/sshprint/config>).
 
-=head3 Main Method
+Input:
 
-=cut
+  $class - class object.
 
-sub main
-{
-  my $class = shift;
-  $class->prog_name((fileparse($0, qr/\.[^.]*/))[0]);
+Output:
 
-  if($#ARGV lt 0)
-  {
-    #TODO LPR backend string...
-    print("TODO: This is where we do the LPR return string for options...\n");
-    exit 10;
-  }
-
-  $class->parse_args();
-  
-  $class->logger->debug("Entering function 'main'");
-  $class->load_config();
-
-  my $sessions = $class->main_config->param('DEFAULTS');
-  my @printers = $class->sub_config->param('PRINTERS');
-  my @favs = $class->sub_config->param('FAVORITEP');
-  if($#printers eq 0)
-  {
-    print "You don't have a local copy of the printer list, retrieving...\n";
-    $class->get_printer_list();
-
-    my $response;
-    print "Would you like to save the printer list in your config? [Y/n] ";
-    $response = <STDIN>;
-    chomp($response);
-
-    if($response =~ /[yY]/ or $response eq "")
-    {
-      $class->save_config();
-    }
-  }
-
-  if(!defined $class->printer())
-  {
-    $class->prompt_printer_input("Favorite printers: ", \@favs, \@printers);
-  }
-
-  $class->logger->debug("The follow options have been set:");
-  $class->logger->debug("   SERVER = " . ($class->server() // "UNDEF"));
-  $class->logger->debug("     FILE = " . ($class->file() // "UNDEF"));
-  $class->logger->debug("  PRINTER = " . ($class->printer() // "UNDEF"));
-  $class->logger->debug("   COPIES = " . ($class->number() // "UNDEF"));
-  $class->logger->debug(" LPR_OPTS = " . join(", ", @{ $class->lpr_options() }));
-
-  $class->print_file();
-}
-
-#-- END MAIN
-
-=head3 Helper functions
+  None
 
 =cut
-
-#-- Helper Functions
-
-=over 1
-
-=item usage()
-
-=cut
-
-sub usage
-{
-  my $class = shift(@_);
-
-  my $help = $class->prog_name() . " [OPTIONS...] FILE\n   or: " . $class->prog_name() . " [OPTIONS...] --file FILE";
-  my $usage = <<USAGE_HERE;
-Usage: $help
-
-Options:
-  -h, --help                  Print this help message and exit
-  -v, --verbose               Show verbose output, specifiy multiple
-                               times to increase verbosity
-  -V, --version               Print version and exit
-  --refresh-printers          Refresh list of printers in config  
-  --list-printers             Print a list of printers
-  --list-servers              Print a list of servers
-  --server=SERVER             Server to connect to and print from
-  --file=FILE, FILE           File to be printed
-
-Options passed to \`lpr':
-  -P printer_name             Specify printer to print to
-  -n, -#, --copies=NUM        Specify number of copies
-  -o, --option option[=value] Set printer option(s)
-
-Extra:
-  If verbosity is greater than 3 (i.e. `-vvv') the script will no longer
-  print the specified file, instead it will print out detailed debug
-  information such as options being passed over SSH to lpr.
-USAGE_HERE
-
-  print $usage;
-}
-
-# Parse Arguments
-sub parse_args
-{
-  my $class = shift(@_);
-  my $debug = 0;
-  my $number = $class->number();
-  my $printer;
-  my $server;
-  my $file;
-  my @lpr_options;
-
-  GetOptions (
-    \my %opt,
-    'help|h' => sub { $class->usage(); exit 0; },
-    'version|V' => sub { print $class->prog_name() . " $VERSION (Perl Edition)\n"; exit 0; },
-    'verbose|v+' => \$debug, 
-    'refresh-printers' => sub { $class->load_config(); $class->get_printer_list(); $class->save_config(); exit 0; },
-    'list-printers' => sub { $class->load_config(); $class->get_printers(); exit 0; },
-    'list-servers' => sub { $class->load_config(); $class->get_servers(); exit 0; },
-    'server=s' => \$server,
-    'file=s' => \$file,
-    'printer|P=s' => \$printer,
-    'copies|n|#=i' => \$number,
-    'option|o=s' => \@lpr_options 
-  );
-
-  $class->logger->more_logging($debug);
-  $class->server($server);
-  $class->file($file);
-  $class->printer($printer);
-  $class->number($number);
-  $class->lpr_options(\@lpr_options);
-
-  if($#ARGV lt 0) 
-  {
-    exit 0;
-  } elsif($#ARGV eq 0 and !$class->file) {
-    $class->file($ARGV[0]);
-  } elsif ($#ARGV eq 0 and $class->file) {
-    $class->logger->logdie("Looks like you\'ve specified the file twice!");
-  } elsif ($#ARGV eq 0 and !$class->file) {
-    $class->logger->logdie("We should never get here!!!!");
-  }
-
-  if(%opt)
-  {
-    $class->logger->logdie("Oops, it looks like we don\'t support option(s): @{[keys %opt]}");
-  }
-}
 
 sub load_main_config
 {
@@ -233,6 +122,23 @@ sub load_main_config
   $config->read("$file") or $class->logger->logdie("@{[$config->error()]}");
   $class->main_config($config);
 }
+
+=item B<load_sub_config>
+
+Function loads the I<sub>-configuration. If no parameter is given, the
+default sub-configuration file is take from the B<DEFAULT> key in the main
+configuration file.
+
+Input:
+
+  $class       - class object.
+  $config_file - file name (I<OPTIONAL>).
+
+Output:
+
+  None
+
+=cut
 
 sub load_sub_config
 {
@@ -257,6 +163,20 @@ sub load_sub_config
   $class->sub_config($config);
 }
 
+=item B<load_config>
+
+Function loads both the main and sub- configuration files.
+
+Input:
+
+  $class - class object.
+
+Output:
+
+  None
+
+=cut
+
 sub load_config
 {
   my $class = shift(@_);
@@ -266,6 +186,20 @@ sub load_config
   $class->load_sub_config();
 }
 
+=item B<save_config>
+
+Function saves the current state of configuration values to file.
+
+Input:
+
+  $class - class object.
+
+Output:
+
+  None
+
+=cut
+
 sub save_config
 {
   my $class = shift(@_);
@@ -273,6 +207,22 @@ sub save_config
   $class->sub_config->write() or $class->logger->logdie("@{[$class->sub_config->error()]}");
 }
 
+=item B<get_printers>
+
+Function prints out the printer list of the sub-configuration file.
+
+Input:
+
+  $class  - class object.
+  $server - printers to print associated with server (I<not implemented yet>).
+
+Output:
+
+  None
+
+#TODO still need to implement support for arbitrary configuration file via field.
+
+=cut
 
 sub get_printers
 {
@@ -284,6 +234,20 @@ sub get_printers
     print "  ", $printer, "\n";
   }
 }
+
+=item B<get_servers>
+
+Function prints out all the servers for which there is a sub-configuration file.
+
+Input:
+
+  $class - class object.
+
+Output:
+
+  None
+
+=cut
 
 sub get_servers
 {
@@ -299,8 +263,117 @@ sub get_servers
     print "  ", $local_config->param('USER'), "@", $local_config->param('SERVER'), "\n";
     $local_config->clear();
   }
-  closedir $dir;
+  closedir($dir);
 }
+
+=item B<check_in_config>
+
+Function generically searches for a pattern within all sub-configuration files.
+
+Input:
+
+  $class   - class object.
+  $phrase  - pattern to look for.
+  $message - useful message to print to the user/log.
+
+Output:
+
+ $found    - undef => not found
+                 1 => found
+
+=cut
+
+sub check_in_config
+{
+  my ($class, $phrase, $message) = @_;
+  my $found;
+  my $exclude_file = $class->config_file();
+
+  opendir(my $dir, $class->config_dir()) or $class->logger->logdie("Unable to access " . $class->config_dir() . ". Does it exist?\n");
+  my @files = grep {!/$exclude_file/ && !/^\./ } readdir($dir);
+  foreach my $file (@files)
+  {
+    $class->logger->info("Opening $file");
+    open(my $fh, '<', $class->config_dir() . "/$file") or $class->logger->logdie("Unable to open file `$file\'.\n");
+    while (<$fh>)
+    {
+      if(/$phrase/)
+      {
+        $class->logger->info("Found $message in $file");
+        $found = 1;
+        last;
+      }
+    }
+    close($fh);
+  }
+  closedir($dir);
+
+  return $found;
+}
+
+=item B<check_server>
+
+Function checks to see if a sub-configuration file exists for the given server.
+
+Input:
+
+  $class  - class object.
+  $server - server to check for.
+
+Output:
+
+ $found    - undef => not found
+                 1 => found
+
+=cut
+
+sub check_server
+{
+  my $class = shift(@_);
+  my $server = shift(@_);
+  return $class->check_in_config("SERVER=$server\$", "server `$server\'");
+}
+
+=item B<check_printer>
+
+Function checks to see if the given printer exists within the sub-configuration.
+
+Input:
+
+  $class  - class object.
+  $printer - printer to check for.
+
+Output:
+
+ $found    - undef => not found
+                 1 => found
+
+=cut
+
+sub check_printer
+{
+  my $class = shift(@_);
+  my $printer = shift(@_);
+  return $class->check_in_config("PRINTERS=.*$printer,", "printer `$printer\'");
+}
+
+=item B<set_favorite_printers>
+
+Function updates the favorite printer array (within the sub-configuration file
+know as B<FAVORITEP>). The function only updates the array if the printer was
+never used before, otherwise it is added to the front of the array, with the
+last element dropped.
+
+Input:
+
+  $class   - class object.
+  $new_fav - new favorite printer.
+
+Output:
+
+  None
+
+=cut
 
 sub set_favorite_printers
 {
@@ -323,7 +396,7 @@ sub set_favorite_printers
   }
 }
 
-=item prompt_printer_input()
+=item B<prompt_printer_input>
 
 This function takes in a message and a list of printers and generates
 a prompt for the user to select a printer from the list. The user
@@ -331,7 +404,7 @@ may also look at a complete list of printers (assuming the one
 passed to the function is not the complete list).
 
 Some sanity checking is done to ensure the user isn't making silly
-selections, like `-1'.
+selections, like I<-1>.
 
 Input:
 
@@ -401,26 +474,17 @@ sub prompt_printer_input()
   $class->set_favorite_printers($class->printer());
 }
 
-=back
+=item B<ssh_connect>
 
-=cut
-
-#-- SSH Related
-
-=head3 SSH Related functions
-
-=over 1
-
-=item ssh_connect()
-
+Function creates a connection to the remote system.
 
 Input:
 
-  $class - the module class object, this is default first parameter
+  $class - class object.
 
 Output:
 
-  $ssh - an instance of the Net::OpenSSH object
+  $ssh   - an instance of the Net::OpenSSH object.
 
 =cut
 
@@ -433,6 +497,20 @@ sub ssh_connect()
 
   return $ssh;
 }
+
+=item B<printer_get_list>
+
+Function retrieves a list of printer available on the remote system.
+
+Input:
+
+  $class - class object.
+
+Output:
+
+  None
+
+=cut
 
 sub get_printer_list
 {
@@ -456,6 +534,21 @@ sub get_printer_list
   $class->sub_config->param('PRINTERS', join(",", @enabled_list));
 }
 
+=item B<print_file>
+
+Function generates the lpr(1) command, opens an SSH connection to the
+remote system, and executes the command while streaming the file.
+
+Input:
+
+  $class - class object.
+
+Output:
+
+  None
+
+=cut
+
 #TODO we need to add some debug mode so that we don't call SSH
 sub print_file
 {
@@ -475,19 +568,47 @@ sub print_file
 
 =back
 
-=head1 ACKNOWLEDGEMENTS
+=head2 Configuration Format
 
-=head1 COPYRIGHT
+The modules support several configuration files, all of which are located in
+I<~/.config/sshprint/> by default. Any use of this modules needs to have at
+least two configuration files. The I<main> configuration file to specify some
+default values (called L<config>) and a I<sub> configuration file to specify
+remote system related options.
 
-Copyright (C) 2015-2016, MIT license
+The configuration files support the following keys:
+
+=head3 Main configuration
+
+ Key          Meaning and Use
+ ---          ---------------
+ DEFAULTS     This is the name of the sub configuration file that the module will
+              use (REQUIRED).
+
+=head3 Sub Configuration
+
+ Key          Meaning and Use
+ ---          ---------------
+      USER    The username of the account on the remote system (REQUIRED).
+    SERVER    The address of the remote system (REQUIRED).
+  PRINTERS    An array of the names of printer that can be used.
+ FAVORITEP    An array of the top three last used printers.
 
 =head1 AUTHOR
 
-Hans-Nikolai Viessmann
+Written by Hans-Nikolai Viessmann with inspiration taken from Andre Masella's
+script I<sshlpr> and D. Sim (AKA xkjyeah) script I<sshlpr2>.
+
+=head1 COPYRIGHT
+
+Copyright (C) 2015-2016, Hans-Nikolai Viessmann. This software is licensed
+under the terms of the MIT license.
 
 =head1 SEE ALSO
 
-For more information, please see the git repository at https://git.hans.ninja/hans/sshprint
+L<Net::OpenSSH>, sshprint(1), sshlpr3(1), and lpr(1).
+
+For more information, please see the git repository at L<https://git.hans.ninja/hans/sshprint>.
 
 =cut
 

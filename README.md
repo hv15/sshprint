@@ -26,13 +26,42 @@ In order to use the script, you need to have [Perl](http://www.perl.org/) and
 OpenSSH `ssh`. Additionally, the remote server needs to have the `lpr` and
 `lpstat` programs installed and access to at least one printer.
 
+More information on how to use `sshprint` or even the `Local::SSHPrint` module
+can be read up in their respective manpages.
+
 ### Installation
 
-*THis section is going to be updated ASAP*
+#### General
+
+I've decided to use the [BUILD.PL](http://search.cpan.org/perldoc?Module%3A%3ABuild)
+to *build* and install the Perl module and script file(s). Here are the basic steps:
+
+```sh
+# build
+$ perl BUILD.PL installdir=vendor
+$ perl Build
+
+# install
+$ perl Build install
+```
+
+Example configuration files as well as documentation can be copied over to the
+correct directories (usually under `/usr`).
+
+#### *ArchLinux*
 
 For those running on ArchLinux, I've created a PKGBUILD script which you can
 use to generate the package, or if you use `yaourt`/`pacaur`, you can get the
 package straight from the [AUR](https://aur.archlinux.org/packages/sshprint/).
+
+#### Dependencies
+
+* Perl 5.22 or greater
+* `Log::Log4Perl` module
+* `Config::Simple` module
+* `Net::OpenSSH` module
+* CUPS (`lpr` and `lpstat`)
+* OpenSSH (`ssh`)
 
 ### Config
 
@@ -75,30 +104,54 @@ formating or validity of keys*.
 
 ### Usage
 
-```
-Usage: sshprint [OPTIONS...] FILE
-   or: sshprint [OPTIONS...] --file FILE
+```text
+Usage:
+    sshprint [OPTION]... [--file] FILE
 
 Options:
-  -h, --help                  Print this help message and exit
-  -v, --verbose               Show verbose output, specifiy multiple
-                               times to increase verbosity
-  -V, --version               Print version and exit
-  --refresh-printers          Refresh list of printers in config  
-  --list-printers             Print a list of printers
-  --list-servers              Print a list of servers
-  --server=SERVER             Server to connect to and print from
-  --file=FILE, FILE           File to be printed
+    -h, --help
+        Print this help message and exit.
 
-Options passed to `lpr':
-  -P printer_name             Specify printer to print to
-  -n, -#, --copies=NUM        Specify number of copies
-  -o, --option option[=value] Set printer option(s)
+    -v, --verbose
+        Show verbose output - specify multiple times to increase verbosity.
 
-Extra:
-  If verbosity is greater than 3 (i.e. `-vvv') the script will no longer
-  print the specified file, instead it will print out detailed debug
-  information such as options being passed over SSH to lpr.
+    -V, --version
+        Print version and exit.
+
+    --refresh-printers
+        Refresh list of printers in configuration file. May be combined with
+        --server to specify which configuration file to update, otherwise
+        the default one is used.
+
+    --list-printers
+        Print a list of printers for each configuration file.
+
+    --list-servers
+        Print a list of remote systems for which we have a configuration
+        file.
+
+    --server server
+        Remote system to connect to and print from.
+
+    --file file
+        File to be printed. This can either be specified as the last
+        argument or through this flag. The flag has precedence.
+
+  Options passed to lpr(1):
+    -P printer_name
+        Specify printer to print to.
+
+    -n, -#, --copies number
+        Specify number of copies - must be greater than 0.
+
+    -o, --option option[=value]
+        Set printer job option - may be given multiple times. The same job
+        options are supported as those of the lpr(1) -o flag.
+
+  Extra:
+    If verbosity is greater than 3 (i.e. -vvv) the script will no longer
+    print the specified file, instead it will print out detailed debug
+    information such as options being passed over ssh(1) to lpr(1).
 ```
 
 Further Work
