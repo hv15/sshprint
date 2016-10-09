@@ -56,7 +56,7 @@ Details about the configuration file and format is given in L</"Configuration Fo
 
 package Local::SSHPrint;
 
-our $VERSION = '2.04';
+our $VERSION = '2.05';
 
 use 5.022_02;
 use strict;

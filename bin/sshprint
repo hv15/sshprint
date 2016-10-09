@@ -107,7 +107,7 @@ if($#printers eq 0)
   }
 }
 
-if(!defined $class->printer())
+if($class->printer() eq '')
 {
   $class->prompt_printer_input("Favorite printers: ", \@favs, \@printers);
 }
