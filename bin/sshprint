@@ -225,7 +225,7 @@ under the terms of the MIT license.
 
 =head1 SEE ALSO
 
-L<Local::SSHPrint>, sshlpr3(1), and lpr(1).
+Local::SSHPrint(3), sshlpr3(1), and lpr(1).
 
 For more information, please see the git repository at L<https://git.hans.ninja/hans/sshprint>.
 

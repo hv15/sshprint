@@ -56,7 +56,7 @@ Details about the configuration file and format is given in L</"Configuration Fo
 
 package Local::SSHPrint;
 
-our $VERSION = '2.05';
+our $VERSION = '2.06';
 
 use 5.022_02;
 use strict;
@@ -426,7 +426,7 @@ sub prompt_printer_input()
   my @favs = @{$favsr};
   my @all = @{$allr // []};
 
-  my $bool_total;
+  my $bool_total = 0;
   my $count = 0;
   my $printn = 0;
   my $printersl = $#favs + 1;
@@ -449,15 +449,17 @@ sub prompt_printer_input()
     print $select_msg;
     $printn = <STDIN>;
     chomp($printn);
+    
+    $class->logger->debug("User input: $printn, Total printers: $printersl.");
 
     if ($printn eq "") 
     {
       $printn = 1;
       last;
-    } elsif ($printn eq 0 and !defined $bool_total) {
+    } elsif ($printn eq 0 and $bool_total eq 0) {
       $class->prompt_printer_input("Complete list of printers", \@all);
       return;
-    } elsif ($printn =~ /[1-$printersl]/) {
+    } elsif (1 le $printn and $printn ge $printersl) {
       last;
     } else {
       print "Invalid printer number given ... Try again.\n";
