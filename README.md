@@ -75,25 +75,18 @@ The config files support the following keys:
 
 | Key        | Meaning and Use                                                                                                      |
 |------------|----------------------------------------------------------------------------------------------------------------------|
-| `DEFAULTS` | This is the name of the server config file that `sshprint` will use if none is given by command line (**REQUIRED**)  |
+| `default` | This is the name of the server config file that `sshprint` will use if none is given by command line (**REQUIRED**)  |
 
 #### Keys for Server config file
 
 | Key         | Meaning and Use                                                                |
 |-------------|--------------------------------------------------------------------------------|
-| `USER`      | The username of the account  on the remote server (**REQUIRED**)               |
-| `SERVER`    | The address of the remote server (**REQUIRED**)                                |
-| `PRINTERS`  | An array of the names of printer that can be used (*generated at initial run*) |
-| `FAVORITEP` | An array of the top three last used printers (*generated at each run*)         |
+| `user`      | The username of the account  on the remote server (**REQUIRED**)               |
+| `server`    | The address of the remote server (**REQUIRED**)                                |
+| `printers`  | An array of the names of printer that can be used (*generated at initial run*) |
+| `favoritep` | An array of the top three last used printers (*generated at each run*)         |
 
 An example of a typical server config file is given below:
-
-```sh
-USER="remote server user account"
-SERVER="URL to server"
-PRINTERS= # Can contain a list of printer names, e.g. ( p1 p2 office1 )
-FAVORITEP= # list of the 3 most used printers, e.g. ( p1 p2 p3 )
-```
 
 **These file are not initialised or created by the script at first use, the
 user needs to create it themselves**. I have now provided an example of the

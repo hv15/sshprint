@@ -1,5 +1,0 @@
-# This is an example server config file for `sshprint'
-USER="user account name on the remote server, e.g. john or jane"
-SERVER="address of the remote server, e.g. ssh.remote.server.com or 1.2.3.4"
-PRINTERS=( "names" "of" "printers" "available" "on" "remote" "server" )
-FAVORITEP=( "top_three" "used" "printers" )

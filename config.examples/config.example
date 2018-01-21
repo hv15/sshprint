@@ -1,2 +1,10 @@
 # This is an example config file for `sshprint'
-DEFAULTS="name of server config file, e.g. ediuni"
+[general]
+defauls="name of server, e.g. ediuni"
+
+# example server block
+[ediuni]
+user=test
+server=ssh.inf.ed.ac.uk
+printers=one, two, three
+favoritep=two, one, three

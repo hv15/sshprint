@@ -6,6 +6,7 @@ use utf8;
 use autodie;
 use warnings qw(all);
 
+#use FindBin::libs; # only for developing (should be commented)
 use Local::SSHPrint;
 use Getopt::Long qw(:config posix_default bundling no_ignore_case);
 use Pod::Usage;
@@ -19,11 +20,11 @@ my $opt_file = '';
 my $opt_printer = '';
 my $opt_number = 1;
 my @opt_lproptions;
-  
+
 GetOptions (
   'help|h' => sub { pod2usage( -verbose => 1 ); },
   'version|V' => sub { print "$0 " . Local::SSHPrint->VERSION . " (Perl Edition)\n"; exit 0; },
-  'verbose|v+' => \$opt_debug, 
+  'verbose|v+' => \$opt_debug,
   'refresh-printers' => sub { $class->load_config(); $class->get_printer_list(); $class->save_config(); exit 0; },
   'list-printers' => sub { $class->load_config(); $class->get_printers(); exit 0; },
   'list-servers' => sub { $class->load_config(); $class->get_servers(); exit 0; },
@@ -31,7 +32,8 @@ GetOptions (
   'file=s' => \$opt_file,
   'printer|P=s' => \$opt_printer,
   'copies|n|#=i' => \$opt_number,
-  'option|o=s' => \@opt_lproptions 
+  'option|o=s' => \@opt_lproptions,
+  'defaults|D' => sub { $class->load_config(); print "Defaults:\n"; my %defaults = $class->get_defaults(); print "\t$_: $defaults{$_}\n" for (keys %defaults); exit 0; }
 ) or pod2usage();
 
 $class->logger->more_logging($opt_debug);
@@ -61,6 +63,8 @@ if($class->file() ne '')
   }
 }
 
+$class->load_config();
+
 if($class->server() ne '')
 {
   if(!$class->check_server($class->server()))
@@ -82,11 +86,8 @@ if($class->number() lt 1)
   $class->logger->logdie("Bad number of copies given.\n");
 }
 
-$class->load_config();
-
-my $sessions = $class->main_config->param('DEFAULTS');
-my @printers = $class->sub_config->param('PRINTERS');
-my @favs = $class->sub_config->param('FAVORITEP');
+my @printers = $class->config->param($class->session() . '.printers');
+my @favs = $class->config->param($class->session() . '.favoritep');
 
 if($#printers eq 0)
 {
@@ -162,6 +163,10 @@ Show verbose output - specify multiple times to increase verbosity.
 
 Print version and exit.
 
+=item B<-D, --defaults>
+
+Print collection of default config values.
+
 =item B<--refresh-printers>
 
 Refresh list of printers in configuration file. May be combined with
@@ -170,12 +175,12 @@ the default one is used.
 
 =item B<--list-printers>
 
-Print a list of printers for each configuration file.
+Print a list of printers for the current server block.
 
 =item B<--list-servers>
 
-Print a list of remote systems for which we have a configuration
-file.
+Print a list of remote systems for which we have a server block
+defined.
 
 =item B<--server> I<server>
 
@@ -220,7 +225,7 @@ script I<sshlpr> and D. Sim (AKA xkjyeah) script I<sshlpr2>.
 
 =head1 COPYRIGHT
 
-Copyright (C) 2015-2016, Hans-Nikolai Viessmann. This software is licensed
+Copyright (C) 2015-2018, Hans-Nikolai Viessmann. This software is licensed
 under the terms of the MIT license.
 
 =head1 SEE ALSO

@@ -13,10 +13,9 @@ printers located in remote networks using ssh(1).
   
   $class->load_config();
   
-  my $sessions = $class->main_config->param('DEFAULTS');
-  my @printers = $class->sub_config->param('PRINTERS');
-  my @favs = $class->sub_config->param('FAVORITEP');
-  
+  my @printers = $class->config->param($class->session() . '.printers');
+  my @favs = $class->config->param($class->session() . '.favoritep');
+
   if($#printers eq 0)
   {
     print "You don't have a local copy of the printer list, retrieving...\n";
@@ -56,7 +55,7 @@ Details about the configuration file and format is given in L</"Configuration Fo
 
 package Local::SSHPrint;
 
-our $VERSION = '2.06';
+our $VERSION = '2.07';
 
 use 5.022_02;
 use strict;
@@ -65,11 +64,13 @@ use autodie;
 use warnings qw(all);
 
 use Log::Log4perl qw(:easy);
+#use Data::Dumper; # development only
+use File::BaseDir;
 use Config::Simple;
 use Net::OpenSSH;
 
 # Ensure that the class->logger is setup.
-Log::Log4perl->easy_init($ERROR); 
+Log::Log4perl->easy_init($ERROR);
 
 # Declare 'global' level variables that are accessible from within the scope
 # of any subroutine of this package.
@@ -80,12 +81,12 @@ use Class::Tiny qw(
   printer
   file
   lpr_options
+  session
 ), {
   number => 1,
-  config_dir => "$ENV{'HOME'}/.config/sshprint", #FIXME
+  config_dir => File::BaseDir->xdg_config_home() . "/sshprint", #FIXME
   config_file => 'config',
-  main_config => new Config::Simple(),
-  sub_config => new Config::Simple(),
+  config => new Config::Simple(syntax=>'ini'),
   logger => Log::Log4perl->get_logger()
 };
 
@@ -93,10 +94,9 @@ use Class::Tiny qw(
 
 =over 4
 
-=item B<load_main_config>
+=item B<get_defaults>
 
-Function loads the main configuration (usually located at
-C<$HOME/.config/sshprint/config>).
+Function returns a hash of the default attributes of this class.
 
 Input:
 
@@ -104,68 +104,25 @@ Input:
 
 Output:
 
-  None
+  hash - key/pair of config values
 
 =cut
 
-sub load_main_config
+sub get_defaults
 {
   my $class = shift(@_);
-  my $file = $class->config_dir() . '/'. $class->config_file();
-  my $config = $class->main_config();
 
-  if (-f not $file)
-  {
-    $class->logger->logdie("The config file '$file' was not found. Please create it as per https://github.com/hv15/sshprint");
-  }
-  
-  $config->read("$file") or $class->logger->logdie("@{[$config->error()]}");
-  $class->main_config($config);
-}
+  my @keys = ( 'session', 'number', 'config_dir', 'config_file' );
 
-=item B<load_sub_config>
+  my %attribs = map {$_ => $class->$_()} @keys;
 
-Function loads the I<sub>-configuration. If no parameter is given, the
-default sub-configuration file is take from the B<DEFAULT> key in the main
-configuration file.
-
-Input:
-
-  $class       - class object.
-  $config_file - file name (I<OPTIONAL>).
-
-Output:
-
-  None
-
-=cut
-
-sub load_sub_config
-{
-  my $class = shift(@_);
-  my $config_file = shift(@_);
-  my $config = $class->sub_config();
-
-  if(!defined $config_file) {
-    #TODO: need to update this to reflect changes in config file...
-    if($class->main_config->param('SESSIONS')) {
-      $config_file = $class->main_config->param('SESSIONS');
-    } elsif($class->main_config->param('DEFAULTS')) {
-      $config_file = $class->main_config->param('DEFAULTS');
-    } else {
-      $class->logger->logdie("No default server given, please specify a server with `-S'");
-    }
-  }
-  my $file = $class->config_dir() . '/' . $config_file;
-  
-  $config->read("$file") or $class->logger->logdie("@{[Config::Simple->error()]}");
-  $class->server($class->server() // $config->param("SERVER"));
-  $class->sub_config($config);
+  return %attribs;
 }
 
 =item B<load_config>
 
-Function loads both the main and sub- configuration files.
+Function loads the configuration (usually located at
+C<$XDG_CONFIG_HOME/sshprint/config>).
 
 Input:
 
@@ -182,8 +139,17 @@ sub load_config
   my $class = shift(@_);
   $class->logger->debug("Entering function 'load_config'");
 
-  $class->load_main_config();
-  $class->load_sub_config();
+  my $file = $class->config_dir() . '/'. $class->config_file();
+  my $config = $class->config();
+
+  if (-f not $file)
+  {
+    $class->logger->logdie("The config file '$file' was not found. Please create it as per https://github.com/hv15/sshprint");
+  }
+
+  $config->read("$file") or $class->logger->logdie("@{[$config->error()]}");
+  $class->config($config);
+  $class->session($config->param('general.default'));
 }
 
 =item B<save_config>
@@ -203,13 +169,12 @@ Output:
 sub save_config
 {
   my $class = shift(@_);
-  $class->main_config->write() or $class->logger->logdie("@{[$class->main_config->error()]}");
-  $class->sub_config->write() or $class->logger->logdie("@{[$class->sub_config->error()]}");
+  $class->config->write() or $class->logger->logdie("@{[$class->config->error()]}");
 }
 
 =item B<get_printers>
 
-Function prints out the printer list of the sub-configuration file.
+Function prints out the printer list of a server block.
 
 Input:
 
@@ -220,15 +185,13 @@ Output:
 
   None
 
-#TODO still need to implement support for arbitrary configuration file via field.
-
 =cut
 
 sub get_printers
 {
   my $class = shift(@_);
-  my @printers = $class->sub_config->param('PRINTERS');
-  print $class->main_config->param('DEFAULTS'), ":\n";
+  my @printers = $class->config->param($class->session() . '.printers');
+  print $class->session(), ":\n";
   foreach my $printer (@printers)
   {
     print "  ", $printer, "\n";
@@ -237,7 +200,7 @@ sub get_printers
 
 =item B<get_servers>
 
-Function prints out all the servers for which there is a sub-configuration file.
+Function prints out all the servers for which there is a server block in the configuration file.
 
 Input:
 
@@ -252,22 +215,22 @@ Output:
 sub get_servers
 {
   my $class = shift(@_);
-  my $local_config;
-  my $exclude_file = $class->config_file();
-  opendir(my $dir, $class->config_dir()) or $class->logger->logdie("Unable to access " . $class->config_dir() . ". Does it exist?");
-  my @files = grep {!/$exclude_file/ && !/^\./ } readdir($dir);
-  foreach my $file (@files)
+  my %config_hash = $class->config->vars();
+
+  # get server blocks
+  my @general = grep /general\..*|.*\.(?!server).*/, keys %config_hash;
+  delete @config_hash{@general};
+  my @servers = map { substr($_, 0, index($_, '.')) } keys %config_hash;
+
+  foreach my $server (@servers)
   {
-    print $file, ":\n";
-    $local_config = new Config::Simple($class->config_dir() . "/" . $file) or $class->logger->logdie("@{[Config::Simple->error()]}");
-    print "  ", $local_config->param('USER'), "@", $local_config->param('SERVER'), "\n";
-    $local_config->clear();
+    print $server, ": ", $class->config->param($server . '.user'), "@", $class->config->param($server . '.server'), "\n";
   }
-  closedir($dir);
 }
 
 =item B<check_in_config>
 
+B<Deprecated> I<might be updated or just removed in next version>
 Function generically searches for a pattern within all sub-configuration files.
 
 Input:
@@ -283,6 +246,7 @@ Output:
 
 =cut
 
+#TODO need to update or remove, still needed?
 sub check_in_config
 {
   my ($class, $phrase, $message) = @_;
@@ -313,7 +277,7 @@ sub check_in_config
 
 =item B<check_server>
 
-Function checks to see if a sub-configuration file exists for the given server.
+Function checks to see if the given server is defined.
 
 Input:
 
@@ -331,12 +295,12 @@ sub check_server
 {
   my $class = shift(@_);
   my $server = shift(@_);
-  return $class->check_in_config("SERVER=$server\$", "server `$server\'");
+  return defined $class->config->param($server . ".server");
 }
 
 =item B<check_printer>
 
-Function checks to see if the given printer exists within the sub-configuration.
+Function checks to see if the given printer exists within the server block.
 
 Input:
 
@@ -354,15 +318,16 @@ sub check_printer
 {
   my $class = shift(@_);
   my $printer = shift(@_);
-  return $class->check_in_config("PRINTERS=.*$printer,", "printer `$printer\'");
+  my %hash = map { $_ => 1 } $class->config->param($class->session() . ".printers");
+  return %hash{$printer};
 }
 
 =item B<set_favorite_printers>
 
-Function updates the favorite printer array (within the sub-configuration file
-know as B<FAVORITEP>). The function only updates the array if the printer was
-never used before, otherwise it is added to the front of the array, with the
-last element dropped.
+Function updates the favorite printer array (within the server block under key
+B<favoritep>). The function only updates the array if the printer was never
+used before, otherwise it is added to the front of the array, with the last
+element dropped.
 
 Input:
 
@@ -385,14 +350,14 @@ sub set_favorite_printers
     $class->logger->logdie("Function `set_favorite_printers' called without an argument!");
   }
 
-  my @favs = $class->sub_config->param('FAVORITEP');
+  my @favs = $class->config->param($class->session() . '.favoritep');
 
   if(!(grep(/^$new_fav$/, @favs) ge 1))
   {
     pop(@favs);
     unshift(@favs, $new_fav);
-    $class->sub_config->param('FAVORITEP', join(",", @favs));
-    $class->sub_config->write();
+    $class->config->param($class->session() . '.favoritep', join(",", @favs));
+    $class->config->write();
   }
 }
 
@@ -449,10 +414,10 @@ sub prompt_printer_input()
     print $select_msg;
     $printn = <STDIN>;
     chomp($printn);
-    
+
     $class->logger->debug("User input: $printn, Total printers: $printersl.");
 
-    if ($printn eq "") 
+    if ($printn eq "")
     {
       $printn = 1;
       last;
@@ -466,12 +431,12 @@ sub prompt_printer_input()
       $count = $i;
     }
   }
-  
+
   if($count ge 2)
   {
     $class->logger->logdie("No valid selection given.");
   }
-  
+
   $class->printer($favs[$printn-1]);
   $class->set_favorite_printers($class->printer());
 }
@@ -493,9 +458,9 @@ Output:
 sub ssh_connect()
 {
   my $class = shift(@_);
-  my $login = $class->sub_config->param('USER') . "@" . $class->sub_config->param('SERVER');
+  my $login = $class->config->param($class->session() . '.user') . "@" . $class->config->param($class->session() . '.server');
   my $ssh = Net::OpenSSH->new($login)
-    or $class->logger->logdie("Couldn't connect to " . $class->sub_config->param('SERVER'));
+    or $class->logger->logdie("Couldn't connect to " . $class->config->param($class->session() . '.server'));
 
   return $ssh;
 }
@@ -519,11 +484,11 @@ sub get_printer_list
   my $class = shift(@_);
   my $ssh = $class->ssh_connect();
 
-  my @list = $ssh->capture({}, "lpstat -p") or 
-    $class->logger->logdie("Unable to run `lpstat' command on @{[$class->sub_config->param('SERVER')]}. @{[$ssh->error]}");
-  
+  my @list = $ssh->capture({}, "lpstat -p") or
+    $class->logger->logdie("Unable to run `lpstat' command on @{[$class->config->param($class->session() . '.server')]}. @{[$ssh->error]}");
+
   $class->logger->debug("@list");
-  
+
   my @enabled_list;
   foreach my $printer (@list)
   {
@@ -533,7 +498,7 @@ sub get_printer_list
     }
   }
   $class->logger->debug(join(",", @enabled_list));
-  $class->sub_config->param('PRINTERS', join(",", @enabled_list));
+  $class->config->param($class->session() . '.printers', join(",", @enabled_list));
 }
 
 =item B<print_file>
@@ -556,7 +521,7 @@ sub print_file
 {
   my $class = shift(@_);
   my $cmd = "lpr -P " . $class->printer() . " -#" . $class->number() . join(" -o ", "", @{$class->lpr_options()});
-  
+
   if($class->logger->is_debug())
   {
     $class->logger->debug("SSH: $cmd < " . $class->file());
@@ -572,29 +537,34 @@ sub print_file
 
 =head2 Configuration Format
 
-The modules support several configuration files, all of which are located in
-I<~/.config/sshprint/> by default. Any use of this modules needs to have at
-least two configuration files. The I<main> configuration file to specify some
-default values (called L<config>) and a I<sub> configuration file to specify
-remote system related options.
+The module supports a single configuration file, located under the
+$XDG_CONFIG_HOME directory, by default. Any use of this module needs at least
+two pieces of configuration, the a default server to use and the configuration
+of the default server. The configuration file uses the INI-style.
 
-The configuration files support the following keys:
+The configuration file supports the following INI blocks and keys:
 
-=head3 Main configuration
+=head3 General Block
+
+The general block (given as I<[general]>), may contain any of the following
+keys:
 
  Key          Meaning and Use
  ---          ---------------
- DEFAULTS     This is the name of the sub configuration file that the module will
+ default      This is the name of the server block that the module will
               use (REQUIRED).
 
-=head3 Sub Configuration
+=head3 Servers Block
+
+The server block, whose block name is the name of ther server (e.g.
+I<[foobaz]>), may use any of the following keys:
 
  Key          Meaning and Use
  ---          ---------------
-      USER    The username of the account on the remote system (REQUIRED).
-    SERVER    The address of the remote system (REQUIRED).
-  PRINTERS    An array of the names of printer that can be used.
- FAVORITEP    An array of the top three last used printers.
+      user    The username of the account on the remote system (REQUIRED).
+    server    The address of the remote system (REQUIRED).
+  printers    An array of the names of printer that can be used.
+ favoritep    An array of the top three last used printers.
 
 =head1 AUTHOR
 
@@ -603,14 +573,15 @@ script I<sshlpr> and D. Sim (AKA xkjyeah) script I<sshlpr2>.
 
 =head1 COPYRIGHT
 
-Copyright (C) 2015-2016, Hans-Nikolai Viessmann. This software is licensed
+Copyright (C) 2015-2018, Hans-Nikolai Viessmann. This software is licensed
 under the terms of the MIT license.
 
 =head1 SEE ALSO
 
 L<Net::OpenSSH>, sshprint(1), sshlpr3(1), and lpr(1).
 
-For more information, please see the git repository at L<https://git.hans.ninja/hans/sshprint>.
+For more information, please see the git repository at
+L<https://git.hans.ninja/hans/sshprint>.
 
 =cut
 
